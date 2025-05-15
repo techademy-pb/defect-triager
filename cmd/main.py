@@ -13,15 +13,15 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 print(dir(dspy))
 
 embedding_model_name = "sentence-transformers/all-mpnet-base-v2"
-model_name = "mistral"
+model_name = "ollama_chat/mistral"
 # Use Ollama local model
 # dspy.settings.configure(
-#     # llm=dspy.OllamaLLM(model="mistral")  # You can replace with "llama3" or any model
 #     llm=dspy.OllamaLLM(model=model_name)
 # )
 
 
 lm = dspy.LM(model_name, api_base='http://localhost:11434', api_key='')
+# dspy.settings.configure(lm=lm)
 dspy.configure(lm=lm)
 
 
@@ -60,13 +60,18 @@ class TriageAgent(dspy.Module):
 
 # Example issue
 sample_issue = """
-When I call `authenticateUser()`, I get a 'token not found' error. I followed the docs.
+Handle pull_request_review event on Github
+
+They are basically issue_comment and can be handle the same but with a different event type "pull_request_review_{submitted, declined}"
+
 """
 
 # Run the agent
 agent = TriageAgent()
+
 result = agent.forward(issue=sample_issue)
 
-# Print result
+# # Print result
 print(f"--- Classification ---\n{result.classification}")
 print(f"\n--- Suggested Comment ---\n{result.response}")
+

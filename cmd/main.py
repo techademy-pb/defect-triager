@@ -6,11 +6,15 @@ from langchain.vectorstores import FAISS
 from typing import List
 import os
 from langchain_ollama import OllamaLLM
+import numpy as np
+
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-print(dir(dspy))
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 embedding_model_name = "sentence-transformers/all-mpnet-base-v2"
 model_name = "ollama_chat/mistral"
@@ -28,11 +32,21 @@ dspy.configure(lm=lm)
 embeddings = HuggingFaceEmbeddings(model_name=embedding_model_name)
 # llm = OllamaLLM(model=model_name)
 # Load vector store
-db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+db = FAISS.load_local("faiss_index_2", embeddings, allow_dangerous_deserialization=True)
 
 
 def retrieve_context(issue_text: str, k=5) -> List[str]:
-    docs = db.similarity_search(issue_text, k=k)
+    print(f"Retrieving context for issue")
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks = splitter.split_text(issue_text)
+    chunk_embeddings = [embeddings.embed_query(chunk) for chunk in chunks]
+    avg_embedding = np.mean(chunk_embeddings, axis=0)
+
+    # docs = db.similarity_search(issue_text, k=k)
+
+    docs = db.similarity_search_by_vector(avg_embedding.tolist(), k=k)
+
+    print(f"Retrieved {len(docs)} docs")
     return [doc.page_content for doc in docs]
 
 
@@ -60,16 +74,21 @@ class TriageAgent(dspy.Module):
 
 # Example issue
 sample_issue = """
-Handle pull_request_review event on Github
+Build Status Not Updated When PipelineRun is Deleted.  In Bitbucket, the build status does not change if a PipelineRun is manually deleted by the user (in the OpenShift Web Console for example). Currently, the status only updates if the pipeline is successfully completed or canceled. However, if the PipelineRun is deleted, the status remains "in progress" indefinitely.
 
-They are basically issue_comment and can be handle the same but with a different event type "pull_request_review_{submitted, declined}"
+Desired Behavior:
+When a PipelineRun is deleted by the user, the build status in Bitbucket should be updated accordingly, indicating that the pipeline no longer exists and is not in progress --> status Failed.
 
 """
 
 # Run the agent
 agent = TriageAgent()
 
-result = agent.forward(issue=sample_issue)
+try:
+    result = agent.forward(issue=sample_issue)
+
+except Exception as e:
+    print(f"Error: {e}")
 
 # # Print result
 print(f"--- Classification ---\n{result.classification}")

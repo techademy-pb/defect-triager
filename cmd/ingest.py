@@ -7,9 +7,8 @@ from langchain.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM
 
-
 REPO_URL = "https://github.com/openshift-pipelines/pipelines-as-code.git"
-REPO_DIR = "repo"
+REPO_DIR = "repo2"
 
 
 def clone_repo():
@@ -17,6 +16,16 @@ def clone_repo():
         subprocess.run(["git", "clone", REPO_URL, REPO_DIR])
     else:
         print("Repo already cloned.")
+
+
+def ingest_doc(index_path: str, splitter, embeddings):
+    loader = DirectoryLoader(REPO_DIR, glob="**/*.md")
+    document = loader.load()
+    text = splitter.split_documents(document)
+    print("Embedding...", text.metadata)
+    # vectorstore = FAISS.from_documents(text, embeddings)
+    # vectorstore.save_local(index_path)
+    # print("Vectorstore saved.")
 
 
 def ingest_folder(folder_path: str, index_path: str, embeddings):
@@ -27,7 +36,6 @@ def ingest_folder(folder_path: str, index_path: str, embeddings):
     print("Splitting text...")
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     texts = splitter.split_documents(documents)
-
     print("Embedding...")
     vectorstore = FAISS.from_documents(texts, embeddings)
     vectorstore.save_local(index_path)
@@ -59,5 +67,7 @@ def load_docs_and_code():
 
 
 if __name__ == "__main__":
-    ingest("sentence-transformers/all-mpnet-base-v2", REPO_DIR, "faiss_index_2")
+    ingest_doc()
+    # clone_repo()
+    # ingest("sentence-transformers/all-mpnet-base-v2", REPO_DIR, "faiss_index_2")
     # create_vector_store()

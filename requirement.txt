@@ -1,0 +1,10 @@
+dspy
+openai
+faiss-cpu
+langchain
+langchain-community==0.3.11
+unstructured
+libmagic
+sentence-transformers==3.3.1
+langchain_ollama
+dspy-ai

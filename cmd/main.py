@@ -1,4 +1,6 @@
 # main.py
+import json
+
 import dspy
 import faiss
 from langchain.vectorstores import FAISS
@@ -7,7 +9,11 @@ from typing import List
 import os
 from langchain_ollama import OllamaLLM
 import numpy as np
-
+from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import List
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -72,25 +78,60 @@ class TriageAgent(dspy.Module):
         return self.program(issue=issue, context=context)
 
 
-# Example issue
-sample_issue = """
-Build Status Not Updated When PipelineRun is Deleted.  In Bitbucket, the build status does not change if a PipelineRun is manually deleted by the user (in the OpenShift Web Console for example). Currently, the status only updates if the pipeline is successfully completed or canceled. However, if the PipelineRun is deleted, the status remains "in progress" indefinitely.
+app = FastAPI()
 
-Desired Behavior:
-When a PipelineRun is deleted by the user, the build status in Bitbucket should be updated accordingly, indicating that the pipeline no longer exists and is not in progress --> status Failed.
+class IssueRequest(BaseModel):
+    issue: str
 
-"""
+@app.post("/triage")
+async def triage_issue(request: IssueRequest):
+    agent = TriageAgent()
+    try:
+        result = agent.forward(issue=request.issue)
+        return JSONResponse({
+            "classification": result.classification,
+            "response": result.response
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-# Run the agent
-agent = TriageAgent()
+class RequestHandler(BaseHTTPRequestHandler):
+    def _send_response(self, response_data):
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(response_data).encode())
 
-try:
-    result = agent.forward(issue=sample_issue)
+    def do_POST(self):
+        if self.path == "/triage":
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
 
-except Exception as e:
-    print(f"Error: {e}")
+            try:
+                request_data = json.loads(post_data)
+                issue_text = request_data.get("issue", "")
 
-# # Print result
-print(f"--- Classification ---\n{result.classification}")
-print(f"\n--- Suggested Comment ---\n{result.response}")
+                agent = TriageAgent()
+                result = agent.forward(issue=issue_text)
 
+                response_data = {
+                    "classification": result.classification,
+                    "response": result.response
+                }
+                self._send_response(response_data)
+
+            except Exception as e:
+                response_data = {"error": str(e)}
+                self.send_response(500)
+                self._send_response(response_data)
+
+
+def run(server_class=HTTPServer, handler_class=RequestHandler, port=8000):
+    server_address = ('', port)
+    httpd = server_class(server_address, handler_class)
+    print(f'Starting HTTP server on port {port}')
+    httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    run(port=8000)
